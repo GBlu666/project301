@@ -1,0 +1,13 @@
+{
+	"folders": [
+		{
+			"name": "calligraphy_classifier",
+			"path": ".."
+		},
+		{
+			"name": "data_raw",
+			"path": "../../../../Desktop/calligraphy_classifier/data_raw"
+		}
+	],
+	"settings": {}
+}
