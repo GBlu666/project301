@@ -146,8 +146,8 @@ if __name__ == "__main__":
     # param weight_dir: where the weight for chinese characer segmentation net is saved. 
     #                 Default path is <project>/src/preprocess/HRCenterNet.pth.tar
     import os.path as osp
-    load_dir = '/root/calligraphy_classifier/data_raw'
-    save_dir = '/root/calligraphy_classifier/test'
+    load_dir = '/Users/garybluedemac/Desktop/advance_topic/project/project301/project301/data_raw'
+    save_dir = '/Users/garybluedemac/Desktop/advance_topic/project/project301/project301/data'
     crop_and_save(load_dir=load_dir, 
                   save_dir=save_dir,
                   weight_dir=osp.join(osp.dirname(__file__), 'HRCenterNet.pth.tar'))

@@ -4,11 +4,14 @@ import torch.optim as optim
 from torch.utils.data import DataLoader, TensorDataset
 from torchvision import transforms, datasets
 from tqdm import tqdm
+import numpy as np
+from sklearn.metrics import confusion_matrix, classification_report
 
 import scipy.io
 import matplotlib.pyplot as plt
 
 from src.model import CalligraphyCNN
+
 
 def data_augmentation():
     train_transforms = transforms.Compose([
@@ -27,18 +30,25 @@ def data_augmentation():
 
     return train_transforms, test_transforms
 
-def load_dataset_from_dir(dataset_dir='dataset/'):
+def load_dataset_from_dir(train_dir, test_dir, val_split=0.2):
     train_transforms, test_transforms = data_augmentation()
 
-    train_dataset = datasets.ImageFolder(root="{}/train".format(dataset_dir), transform=train_transforms)
-    test_dataset = datasets.ImageFolder(root="{}/test".format(dataset_dir), transform=test_transforms)
+    train_dataset = datasets.ImageFolder(root=train_dir, transform=train_transforms)
+    test_dataset = datasets.ImageFolder(root=test_dir, transform=test_transforms)
+
+    train_size = int((1 - val_split) * len(train_dataset))
+    val_size = len(train_dataset) - train_size
+    train_dataset, val_dataset = torch.utils.data.random_split(train_dataset, [train_size, val_size])
 
     train_loader = DataLoader(train_dataset, batch_size=32, shuffle=True)
+    val_loader = DataLoader(val_dataset, batch_size=32, shuffle=False)
     test_loader = DataLoader(test_dataset, batch_size=32, shuffle=False)
 
     print("Successfully loaded dataset")
 
-    return train_loader, test_loader
+    return train_loader, val_loader, test_loader
+
+
 
 def load_dataset_train_only(dataset_dir):
     train_transforms, _ = data_augmentation()
@@ -80,7 +90,64 @@ def load_dataset_from_mat(mat_dir='./CV_1_801.mat', batch_size=32, augment=False
 
     return train_loader, test_loader
 
-def train_model(model, criterion, optimizer, train_loader, device, num_epochs=10):
+def train_model(model, criterion, optimizer, train_loader, val_loader, num_epochs=10, device='cpu'):
+    train_loss_history = []
+    train_acc_history = []
+    val_loss_history = []
+    val_acc_history = []
+
+    for epoch in range(num_epochs):
+        # Training loop
+        model.train()
+        train_loss = 0.0
+        train_correct = 0
+        train_total = 0
+
+        for images, labels in train_loader:
+            images, labels = images.to(device), labels.to(device)
+            optimizer.zero_grad()
+            outputs = model(images)
+            loss = criterion(outputs, labels)
+            loss.backward()
+            optimizer.step()
+            train_loss += loss.item() * images.size(0)
+            _, predicted = torch.max(outputs.data, 1)
+            train_total += labels.size(0)
+            train_correct += (predicted == labels).sum().item()
+
+        train_loss = train_loss / len(train_loader.dataset)
+        train_accuracy = 100.0 * train_correct / train_total
+
+        train_loss_history.append(train_loss)
+        train_acc_history.append(train_accuracy)
+
+        # Validation loop
+        model.eval()
+        val_loss = 0.0
+        val_correct = 0
+        val_total = 0
+
+        with torch.no_grad():
+            for images, labels in val_loader:
+                images, labels = images.to(device), labels.to(device)
+                outputs = model(images)
+                loss = criterion(outputs, labels)
+                val_loss += loss.item() * images.size(0)
+                _, predicted = torch.max(outputs.data, 1)
+                val_total += labels.size(0)
+                val_correct += (predicted == labels).sum().item()
+
+        val_loss = val_loss / len(val_loader.dataset)
+        val_accuracy = 100.0 * val_correct / val_total
+
+        val_loss_history.append(val_loss)
+        val_acc_history.append(val_accuracy)
+
+        print(f"Epoch [{epoch+1}/{num_epochs}], Train Loss: {train_loss:.4f}, Train Acc: {train_accuracy:.2f}%, Val Loss: {val_loss:.4f}, Val Acc: {val_accuracy:.2f}%")
+
+    return train_loss_history, train_acc_history, val_loss_history, val_acc_history
+
+'''def train_model(model, criterion, optimizer, train_loader, val_loader, num_epochs=10, device='cpu'):
     print('Start training ...')
 
     model.train()
@@ -116,27 +183,30 @@ def train_model(model, criterion, optimizer, train_loader, device, num_epochs=10
         print(f'Epoch {epoch+1}, Loss: {epoch_loss}, Accuracy: {epoch_accuracy}%')
 
     print('Training finished')
-    return train_loss, train_accuracy
+    return train_loss, train_accuracy'''
 
 def evaluate_model(model, test_loader, device):
     model.eval()
     correct = 0
     total = 0
+    predicted_labels = []
+    true_labels = []
 
     with torch.no_grad():
         for images, labels in test_loader:
-            # Move data to GPU
             images, labels = images.to(device), labels.to(device)
 
             outputs = model(images)
             _, predicted = torch.max(outputs.data, 1)
             total += labels.size(0)
-            _, labels = torch.max(labels.data, 1)
             correct += (predicted == labels).sum().item()
+
+            predicted_labels.extend(predicted.cpu().numpy())
+            true_labels.extend(labels.cpu().numpy())
 
     accuracy = 100 * correct / total
     print(f'Test Accuracy: {accuracy}%')
-    return accuracy
+    return np.array(true_labels), np.array(predicted_labels)
 
 
 def load_mat_file(file_path):
@@ -158,32 +228,99 @@ def get_overview(mat_contents):
         except AttributeError:
             print(f"Value: {value}")
 
+def plot_confusion_matrix(true_labels, predicted_labels, classes):
+    cm = confusion_matrix(true_labels, predicted_labels)
+    fig, ax = plt.subplots(figsize=(10, 10))
+    ax.matshow(cm, cmap=plt.cm.Blues)
+    ax.set_title("Confusion Matrix")
+    ax.set_xlabel("Predicted Labels")
+    ax.set_ylabel("True Labels")
+    ax.set_xticks(range(len(classes)))
+    ax.set_yticks(range(len(classes)))
+    ax.set_xticklabels(classes, rotation=45)
+    ax.set_yticklabels(classes)
+
+    for i in range(len(classes)):
+        for j in range(len(classes)):
+            ax.text(j, i, str(cm[i, j]), ha="center", va="center", color="white" if cm[i, j] > cm.max() / 2 else "black")
+
+    plt.tight_layout()
+    plt.show()
+
+def plot_training_curve(train_loss_history, train_acc_history, val_loss_history, val_acc_history):
+    plt.figure(figsize=(12, 5))
+
+    plt.subplot(1, 2, 1)
+    plt.plot(train_loss_history, label='Train Loss')
+    plt.plot(val_loss_history, label='Validation Loss')
+    plt.xlabel('Epoch')
+    plt.ylabel('Loss')
+    plt.legend()
+
+    plt.subplot(1, 2, 2)
+    plt.plot(train_acc_history, label='Train Accuracy')
+    plt.plot(val_acc_history, label='Validation Accuracy')
+    plt.xlabel('Epoch')
+    plt.ylabel('Accuracy')
+    plt.legend()
+
+    plt.tight_layout()
+    plt.show()
 
 def main(load_dir="/root/calligraphy_classifier/data"):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Using {device} device.")
 
-    #train_loader, test_loader = load_dataset_from_mat()
-    train_loader = load_dataset_train_only(load_dir)
+    train_dir = "/Users/garybluedemac/Desktop/advance_topic/project/project301/project301/data"
+    test_dir = "/Users/garybluedemac/Desktop/advance_topic/project/project301/project301/data_test"
+    train_loader, val_loader, test_loader = load_dataset_from_dir(train_dir, test_dir)
 
     model = CalligraphyCNN().to(device)
     optimizer = optim.Adam(model.parameters(), lr=0.001)
     criterion = nn.CrossEntropyLoss()
-    train_loss, train_accuracy = train_model(model, criterion, optimizer, train_loader, device=device, num_epochs=20)
-    #test_accuracy = evaluate_model(model, test_loader, device)
+    num_epochs = 20
+    #train_loss, train_accuracy = train_model(model, criterion, optimizer, train_loader, device=device, num_epochs=20)
+    
+    train_loss_history, train_acc_history, val_loss_history, val_acc_history = train_model(
+        model, criterion, optimizer, train_loader, val_loader, num_epochs, device
+    )
+    
+    plot_training_curve(train_loss_history, train_acc_history, val_loss_history, val_acc_history)
+    
+    true_labels, predicted_labels = evaluate_model(model, test_loader, device)
+    test_accuracy = evaluate_model(model, test_loader, device)
+    print("test_acc: ", test_accuracy)
 
-    plt.figure(figsize=(12, 5))
+    '''plt.figure(figsize=(12, 5))
+
+    # Plot training loss
     plt.subplot(1, 2, 1)
     plt.plot(train_loss, label='Training Loss')
     plt.title('Training Loss')
+    plt.xlabel('Epoch')
+    plt.ylabel('Loss')
+    plt.grid(True)
     plt.legend()
 
+    # Plot training accuracy
     plt.subplot(1, 2, 2)
     plt.plot(train_accuracy, label='Training Accuracy')
     plt.title('Training Accuracy')
-    plt.legend()
+    plt.xlabel('Epoch')
+    plt.ylabel('Accuracy (%)')
+    plt.grid(True)
+    plt.legend()'''
+
+    # Adjust spacing between subplots
+    plt.tight_layout()
+
+    # Display the plots
     plt.show()
     
+    # Plot confusion matrix
+    classes = ['caoshu', 'kaishu', 'lishu', 'zhuanshu']  # Replace with your actual class names
+    plot_confusion_matrix(true_labels, predicted_labels, classes)
+    
 if __name__ == "__main__":
-    load_dir = "/root/calligraphy_classifier/data"  # path to preoprocessed dataset for train only
+    load_dir = "/Users/garybluedemac/Desktop/advance_topic/project/project301/project301/data"  # path to preoprocessed dataset for train only
     main(load_dir=load_dir)
