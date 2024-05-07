@@ -5,7 +5,7 @@ from torch.utils.data import DataLoader, TensorDataset
 from torchvision import transforms, datasets
 from tqdm import tqdm
 import numpy as np
-from sklearn.metrics import confusion_matrix, classification_report
+from sklearn.metrics import confusion_matrix, classification_report, precision_score, recall_score, f1_score
 
 import scipy.io
 import matplotlib.pyplot as plt
@@ -147,45 +147,7 @@ def train_model(model, criterion, optimizer, train_loader, val_loader, num_epoch
 
     return train_loss_history, train_acc_history, val_loss_history, val_acc_history
 
-'''def train_model(model, criterion, optimizer, train_loader, val_loader, num_epochs=10, device='cpu'):
-    print('Start training ...')
-
-    model.train()
-    train_loss, train_accuracy = [], []
-
-    for epoch in range(num_epochs):
-        running_loss = 0.0
-        correct = 0
-        total = 0
-
-        for images, labels in train_loader:
-            # Move data to GPU
-            images, labels = images.to(device), labels.to(device)
-
-            optimizer.zero_grad()
-            outputs = model(images)
-            loss = criterion(outputs, labels)
-            loss.backward()
-            optimizer.step()
-
-            running_loss += loss.item()
-            _, predicted = torch.max(outputs.data, 1)
-            total += labels.size(0)
-            #_, labels = torch.max(labels.data, 1)
-            labels = labels.data
-            
-            correct += (predicted == labels).sum().item()
-
-        epoch_loss = running_loss / len(train_loader)
-        epoch_accuracy = 100 * correct / total
-        train_loss.append(epoch_loss)
-        train_accuracy.append(epoch_accuracy)
-        print(f'Epoch {epoch+1}, Loss: {epoch_loss}, Accuracy: {epoch_accuracy}%')
-
-    print('Training finished')
-    return train_loss, train_accuracy'''
-
-def evaluate_model(model, test_loader, device):
+'''def evaluate_model(model, test_loader, device):
     model.eval()
     correct = 0
     total = 0
@@ -206,7 +168,7 @@ def evaluate_model(model, test_loader, device):
 
     accuracy = 100 * correct / total
     print(f'Test Accuracy: {accuracy}%')
-    return np.array(true_labels), np.array(predicted_labels)
+    return np.array(true_labels), np.array(predicted_labels)'''
 
 
 def load_mat_file(file_path):
@@ -266,6 +228,44 @@ def plot_training_curve(train_loss_history, train_acc_history, val_loss_history,
 
     plt.tight_layout()
     plt.show()
+    
+def evaluate_model(model, test_loader, device):
+    model.eval()
+    correct = 0
+    total = 0
+    predicted_labels = []
+    true_labels = []
+
+    with torch.no_grad():
+        for images, labels in test_loader:
+            images, labels = images.to(device), labels.to(device)
+
+            outputs = model(images)
+            _, predicted = torch.max(outputs.data, 1)
+            total += labels.size(0)
+            correct += (predicted == labels).sum().item()
+
+            predicted_labels.extend(predicted.cpu().numpy())
+            true_labels.extend(labels.cpu().numpy())
+
+    accuracy = 100 * correct / total
+    print(f'Test Accuracy: {accuracy}%')
+
+    # Calculate evaluation metrics
+    precision = precision_score(true_labels, predicted_labels, average=None)
+    recall = recall_score(true_labels, predicted_labels, average=None)
+    f1 = f1_score(true_labels, predicted_labels, average=None)
+
+    # Print evaluation metrics for each class
+    classes = ['caoshu', 'kaishu', 'lishu', 'zhuanshu']  # Replace with your actual class names
+    for i in range(len(classes)):
+        print(f'Class: {classes[i]}')
+        print(f'Precision: {precision[i]:.4f}')
+        print(f'Recall: {recall[i]:.4f}')
+        print(f'F1-score: {f1[i]:.4f}')
+        print()
+
+    return np.array(true_labels), np.array(predicted_labels)
 
 def main(load_dir="/root/calligraphy_classifier/data"):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -291,25 +291,6 @@ def main(load_dir="/root/calligraphy_classifier/data"):
     test_accuracy = evaluate_model(model, test_loader, device)
     print("test_acc: ", test_accuracy)
 
-    '''plt.figure(figsize=(12, 5))
-
-    # Plot training loss
-    plt.subplot(1, 2, 1)
-    plt.plot(train_loss, label='Training Loss')
-    plt.title('Training Loss')
-    plt.xlabel('Epoch')
-    plt.ylabel('Loss')
-    plt.grid(True)
-    plt.legend()
-
-    # Plot training accuracy
-    plt.subplot(1, 2, 2)
-    plt.plot(train_accuracy, label='Training Accuracy')
-    plt.title('Training Accuracy')
-    plt.xlabel('Epoch')
-    plt.ylabel('Accuracy (%)')
-    plt.grid(True)
-    plt.legend()'''
 
     # Adjust spacing between subplots
     plt.tight_layout()
