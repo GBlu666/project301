@@ -147,30 +147,6 @@ def train_model(model, criterion, optimizer, train_loader, val_loader, num_epoch
 
     return train_loss_history, train_acc_history, val_loss_history, val_acc_history
 
-'''def evaluate_model(model, test_loader, device):
-    model.eval()
-    correct = 0
-    total = 0
-    predicted_labels = []
-    true_labels = []
-
-    with torch.no_grad():
-        for images, labels in test_loader:
-            images, labels = images.to(device), labels.to(device)
-
-            outputs = model(images)
-            _, predicted = torch.max(outputs.data, 1)
-            total += labels.size(0)
-            correct += (predicted == labels).sum().item()
-
-            predicted_labels.extend(predicted.cpu().numpy())
-            true_labels.extend(labels.cpu().numpy())
-
-    accuracy = 100 * correct / total
-    print(f'Test Accuracy: {accuracy}%')
-    return np.array(true_labels), np.array(predicted_labels)'''
-
-
 def load_mat_file(file_path):
     # Load the MATLAB file
     mat_contents = scipy.io.loadmat(file_path)
